@@ -19,6 +19,18 @@ export interface GameStore {
   phase: Phase;
   score: number;
   health: number;
+  /**
+   * UI auth gate (PR 7). False until a successful login/register flips it via
+   * the AuthScreen. Colocated with game state for the MVP; could split into a
+   * dedicated auth store later.
+   */
+  isAuthenticated: boolean;
+  /**
+   * Timestamp (ms) the current play session started, stamped on Start/Play
+   * Again so GameOverScreen can compute `durationMs` for the score-persistence
+   * POST (design Data Flow c). Null when not in a run.
+   */
+  playStartedAt: number | null;
   /** Apply a partial update to the store. Used by both Pixi systems and React. */
   set: (partial: Partial<GameStore>) => void;
 }
@@ -27,5 +39,7 @@ export const useGameStore = create<GameStore>((set) => ({
   phase: 'menu',
   score: 0,
   health: 100,
+  isAuthenticated: false,
+  playStartedAt: null,
   set: (partial) => set(partial),
 }));

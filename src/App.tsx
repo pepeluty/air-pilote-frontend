@@ -1,33 +1,48 @@
 import { useEffect, useRef } from 'react';
 import { Engine } from './game/engine/Engine';
 import { useGameStore } from './game/state/gameStore';
+import { AuthScreen } from './ui/screens/AuthScreen';
+import { MenuScreen } from './ui/screens/MenuScreen';
+import { GameOverScreen } from './ui/screens/GameOverScreen';
+import { PausedScreen } from './ui/screens/PausedScreen';
+import { HUD } from './ui/hud/HUD';
 import './App.css';
 
 /**
- * Phase-based screen router (skeleton). Subscribes to `phase` from the Zustand
- * store and renders the matching screen. This is the React <- store
- * direction of the bidirectional bridge (design Decision #9).
+ * Phase-based screen router with an auth gate. Subscribes to the Zustand store
+ * and renders the matching screen — the React <- store direction of the
+ * bidirectional bridge (design Decision #9).
  *
- * Full screens (Auth/Menu/GameOver/Paused) + HUD are PR 7 (task 3.7). The
- * placeholders here exist only to prove the phase router + the Start/Pause
- * command path (React -> store): buttons call `store.set({ phase })` and the
- * Engine subscribes to those changes.
+ * Auth gate: when `isAuthenticated` is false the AuthScreen is shown regardless
+ * of phase. Once authenticated the phase router drives the screen:
+ *   menu          → MenuScreen
+ *   playing       → GameCanvas + HUD
+ *   paused        → GameCanvas + HUD + PausedScreen overlay
+ *   gameOver      → GameOverScreen
+ *
+ * The canvas (and Engine) is mounted for both 'playing' AND 'paused' so it
+ * survives the playing<->paused transition — paused retains state on stage
+ * (design Data Flow a'). It is destroyed when the subtree leaves (menu/gameOver).
  */
 export function App(): JSX.Element {
   const phase = useGameStore((s) => s.phase);
-  const showCanvas = phase === 'playing' || phase === 'paused';
+  const isAuthenticated = useGameStore((s) => s.isAuthenticated);
+  const showCanvas = isAuthenticated && (phase === 'playing' || phase === 'paused');
+  const showHud = showCanvas;
 
   return (
     <div className="app">
-      {phase === 'menu' && <MenuPlaceholder />}
+      {!isAuthenticated && <AuthScreen />}
 
-      {/* Mounted for both 'playing' AND 'paused' so the canvas (and engine)
-          survives the playing<->paused transition — paused retains state. */}
+      {isAuthenticated && phase === 'menu' && <MenuScreen />}
+
       {showCanvas && <GameCanvas />}
 
-      {phase === 'playing' && <HudPlaceholder />}
-      {phase === 'paused' && <PauseOverlay />}
-      {phase === 'gameOver' && <GameOverPlaceholder />}
+      {showHud && <HUD />}
+
+      {isAuthenticated && phase === 'paused' && <PausedScreen />}
+
+      {isAuthenticated && phase === 'gameOver' && <GameOverScreen />}
     </div>
   );
 }
@@ -56,58 +71,4 @@ function GameCanvas(): JSX.Element {
   }, []);
 
   return <div ref={hostRef} className="game-canvas" />;
-}
-
-function MenuPlaceholder(): JSX.Element {
-  const setPhase = useGameStore((s) => s.set);
-  return (
-    <div className="screen menu">
-      <h1>Air-Pilote</h1>
-      <p>Menu (skeleton)</p>
-      <button type="button" onClick={() => setPhase({ phase: 'playing' })}>
-        Start Game
-      </button>
-    </div>
-  );
-}
-
-function HudPlaceholder(): JSX.Element {
-  const score = useGameStore((s) => s.score);
-  const health = useGameStore((s) => s.health);
-  const setPhase = useGameStore((s) => s.set);
-  return (
-    <div className="hud">
-      <span>Score: {score}</span>
-      <span>Health: {health}</span>
-      <button type="button" onClick={() => setPhase({ phase: 'paused' })}>
-        Pause
-      </button>
-    </div>
-  );
-}
-
-function PauseOverlay(): JSX.Element {
-  const setPhase = useGameStore((s) => s.set);
-  return (
-    <div className="screen overlay">
-      <h2>Paused</h2>
-      <button type="button" onClick={() => setPhase({ phase: 'playing' })}>
-        Resume
-      </button>
-    </div>
-  );
-}
-
-function GameOverPlaceholder(): JSX.Element {
-  const score = useGameStore((s) => s.score);
-  const setPhase = useGameStore((s) => s.set);
-  return (
-    <div className="screen overlay">
-      <h2>Game Over</h2>
-      <p>Score: {score}</p>
-      <button type="button" onClick={() => setPhase({ phase: 'menu' })}>
-        Back to Menu
-      </button>
-    </div>
-  );
 }
