@@ -14,5 +14,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     css: true,
+    // Playwright E2E lives in `e2e/` and uses @playwright/test's `test()`, NOT
+    // Vitest's — exclude it so `vitest run` doesn't try to collect those files.
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**', 'playwright-report/**', 'test-results/**'],
   },
 });
