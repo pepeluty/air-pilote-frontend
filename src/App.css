@@ -123,6 +123,61 @@
   opacity: 0.85;
 }
 
+/* --- Jet selection cards (MenuScreen) — design Decision #8: inline 3-card --- */
+.jet-select {
+  display: flex;
+  gap: 16px;
+  margin: 8px 0;
+}
+
+.jet-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 22px;
+  min-width: 160px;
+  background: #11141c;
+  color: #e6e6e6;
+  border: 2px solid #2a2f3a;
+  border-radius: 10px;
+}
+
+.jet-card:hover {
+  background: #1a1f2b;
+  border-color: #4a5366;
+}
+
+.jet-card.selected {
+  border-color: #6ea8fe;
+  box-shadow: 0 0 0 2px #6ea8fe inset;
+  background: #1a2233;
+}
+
+.jet-card-name {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.jet-card-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.fetch-warn {
+  font-size: 13px;
+  opacity: 0.6;
+  color: #e6c519;
+}
+
+.select-hint {
+  font-size: 13px;
+  opacity: 0.65;
+}
+
 .save-status {
   font-size: 14px;
   opacity: 0.6;

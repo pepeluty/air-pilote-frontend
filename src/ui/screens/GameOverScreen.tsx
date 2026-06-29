@@ -21,9 +21,10 @@ export function GameOverScreen(): JSX.Element {
     let active = true;
     const { score: finalScore, playStartedAt, selectedJetTypeId } = useGameStore.getState();
     const durationMs = playStartedAt != null ? Date.now() - playStartedAt : 0;
-    // jetTypeId is required by the backend (design Data Flow d). Until PR 6
-    // wires the jet-selection menu, selectedJetTypeId is null and we skip the
-    // save — a record cannot be persisted without a jet type.
+    // jetTypeId is required by the backend (design Data Flow d). PR 6 wires the
+    // jet-selection menu so selectedJetTypeId is set before reaching gameOver;
+    // the guard remains a defensive no-save for an unset selection (e.g. a
+    // future entry path that bypasses the menu) instead of failing the POST.
     if (selectedJetTypeId) {
       api
         .saveGameRecord(finalScore, durationMs, selectedJetTypeId)
