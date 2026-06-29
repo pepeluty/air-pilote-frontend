@@ -1,6 +1,6 @@
 /**
- * Air-Pilote — Playwright E2E (task 4.8; spec frontend-game-client:
- * "Auth UI", "Game Phases", "HUD Overlay").
+ * Air-Pilote — Playwright E2E (task 4.8 + 7.5; spec frontend-game-client:
+ * "Auth UI", "Game Phases", "HUD Overlay", ADDED "Jet Type Selection").
  *
  * Mocks the backend via `page.route()` — no live NestJS needed. Asserts ONLY
  * DOM-level overlays (HUD text, screen headings, buttons); the PixiJS canvas
@@ -20,11 +20,30 @@ type StoreApi = {
   };
 };
 
+/** Fixed seed UUIDs (must match FALLBACK_JET_TYPES / backend migration). */
+const INTERCEPTOR_ID = '00000000-0000-4000-8000-000000000001';
+const BALANCED_ID = '00000000-0000-4000-8000-000000000002';
+const HEAVY_ID = '00000000-0000-4000-8000-000000000003';
+
+/**
+ * Mock jet-type catalog matching the backend seed migration (design author-
+ * itative seed-values table). Reused across tests that exercise the selection
+ * UI.
+ */
+const JET_TYPES_MOCK = [
+  { id: INTERCEPTOR_ID, name: 'Interceptor', maxSpeed: 460, cruiseSpeed: 200, accelerationRate: 4.0, defense: 10, damage: 30 },
+  { id: BALANCED_ID, name: 'Balanced', maxSpeed: 360, cruiseSpeed: 200, accelerationRate: 5.0, defense: 35, damage: 45 },
+  { id: HEAVY_ID, name: 'Heavy', maxSpeed: 280, cruiseSpeed: 180, accelerationRate: 6.0, defense: 60, damage: 80 },
+];
+
+// Holds the last POST /game-records body for assertion across tests.
+let lastGameRecordBody: Record<string, unknown> | null = null;
+
 /**
  * Install the API mocks for a run. Routes are set BEFORE the page loads so
  * no real network call escapes.
  */
-async function installApiMocks(page: Page, opts: { loginFails?: boolean } = {}): Promise<void> {
+async function installApiMocks(page: Page, opts: { loginFails?: boolean; mockJetTypes?: boolean } = {}): Promise<void> {
   await page.route('**/auth/register', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ accessToken: 'fake-token' }) }),
   );
@@ -40,16 +59,27 @@ async function installApiMocks(page: Page, opts: { loginFails?: boolean } = {}):
   });
   await page.route('**/auth/refresh', (route) => route.fulfill({ status: 401, body: 'no refresh' }));
   await page.route('**/auth/logout', (route) => route.fulfill({ status: 204 }));
-  await page.route('**/game-records', (route) =>
+  await page.route('**/game-records', (route, request) => {
+    // Capture the POST body for assertion in the E2E jetTypeId test.
+    if (request.method() === 'POST') {
+      const body = JSON.parse(request.postData() || '{}');
+      lastGameRecordBody = body;
+    }
     route.fulfill({
       status: 201,
       contentType: 'application/json',
       body: JSON.stringify({ id: 'rec-1', score: 0, durationMs: 0, timestamp: new Date().toISOString() }),
-    }),
-  );
+    });
+  });
   await page.route('**/game-records/high-score', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ highScore: 5000 }) }),
   );
+
+  if (opts.mockJetTypes ?? true) {
+    await page.route('**/jet-types', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(JET_TYPES_MOCK) }),
+    );
+  }
 }
 
 // --------------------------------------------------------------------------------
@@ -178,4 +208,50 @@ test('HUD: score + health elements exist and reflect store values', async ({ pag
   });
   await expect(score).toContainText('Score: 1500');
   await expect(health).toContainText('Health: 60');
+});
+
+// --------------------------------------------------------------------------------
+// 6. Jet selection → start → kill enemy → gameOver → score saved with jetTypeId
+//    (task 7.5 spec: "select jet → start → kill enemy (multi-hit) → gameOver →
+//     score saved with jetTypeId")
+// --------------------------------------------------------------------------------
+
+test('select jet → start → gameOver → score saved with jetTypeId (E2E jet selection spec)', async ({ page }) => {
+  lastGameRecordBody = null; // reset before test
+  await reachMenu(page);
+
+  // The menu shows 3 jet type cards (mocked via /jet-types route).
+  await expect(page.getByText('Interceptor')).toBeVisible();
+  await expect(page.getByText('Balanced')).toBeVisible();
+  await expect(page.getByText('Heavy')).toBeVisible();
+
+  // Click the Balanced card.
+  await page.getByText('Balanced').click();
+
+  // Start button should now be enabled.
+  const startButton = page.getByRole('button', { name: 'Start Game' });
+  await expect(startButton).not.toBeDisabled();
+  await startButton.click();
+
+  // HUD overlay present while playing.
+  await expect(page.getByText(/Score:/i)).toBeVisible();
+  await expect(page.getByText(/Health:/i)).toBeVisible();
+
+  // Drive player death (simulate multi-hit by directly setting health=0,
+  // but the gameOver transition is what triggers the score persistence).
+  await page.evaluate(() => {
+    const s = (window as unknown as { __gameStore: StoreApi }).__gameStore;
+    s.getState().set({ score: 350, health: 0, phase: 'gameOver' });
+  });
+
+  // Game Over screen visible.
+  await expect(page.getByRole('heading', { name: 'Game Over' })).toBeVisible();
+  await expect(page.getByText('Score: 350')).toBeVisible();
+
+  // The GameOverScreen should have called saveGameRecord with the jetTypeId.
+  // The POST body was captured by the route handler; verify it includes
+  // the Balanced UUID and the correct score.
+  expect(lastGameRecordBody).not.toBeNull();
+  expect(lastGameRecordBody!.score).toBe(350);
+  expect(lastGameRecordBody!.jetTypeId).toBe(BALANCED_ID);
 });

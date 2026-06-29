@@ -14,7 +14,7 @@ import { Projectile } from '../../entities/Projectile';
 import { Enemy } from '../../entities/Enemy';
 import { WorldContainer } from '../../engine/WorldContainer';
 import { useGameStore } from '../../state/gameStore';
-import { SCORE_PER_KILL, ENEMY_CONTACT_DAMAGE } from '../../constants';
+import { SCORE_PER_KILL, ENEMY_CONTACT_DAMAGE, FALLBACK_JET_TYPES } from '../../constants';
 
 /**
  * Default jet (`new Jet({...})` with no stats) uses the Balanced fallback
@@ -54,6 +54,11 @@ function makeCtx(jet: Jet, projectiles: Projectile[], enemies: Enemy[]): GameCon
 function resetStore(): void {
   useGameStore.setState({ phase: 'playing', score: 0, health: 100, playStartedAt: null });
 }
+
+/** Heavy jet type stats (FALLBACK_JET_TYPES[2]) — for multi-hit + defense tests. */
+const HEAVY_DEFENSE = 60;
+const HEAVY_DAMAGE = 80;
+const HEAVY_EXPECTED_CONTACT_DAMAGE = ENEMY_CONTACT_DAMAGE * (1 - HEAVY_DEFENSE / 100); // 20 * 0.4 = 8
 
 describe('CollisionSystem — Basic Enemy AI + Player death specs', () => {
   beforeEach(() => {
@@ -121,6 +126,56 @@ describe('CollisionSystem — Basic Enemy AI + Player death specs', () => {
     // Phase does NOT change (player still alive) — no gameOver publish.
     expect(setSpy).not.toHaveBeenCalledWith(expect.objectContaining({ phase: 'gameOver' }));
     expect(useGameStore.getState().phase).toBe('playing');
+  });
+
+  // ── Multi-hit (spec "Enemy destroyed by projectile: multiple hits") ──────
+
+  it('multi-hit: enemy health 100, damage 80 (Heavy) → 2 hits destroys + score (spec)', () => {
+    const jet = new Jet({ x: 100, y: 100 });
+    // Full-health enemy (100) with Heavy damage (80) → needs 2 hits.
+    const enemy = new Enemy(500, 500, 100);
+    // Start with only ONE projectile — second one added after first tick.
+    const projectile1 = new Projectile(500, 500, 0, -520, HEAVY_DAMAGE);
+    const ctx = makeCtx(jet, [projectile1], [enemy]);
+    const setSpy = vi.spyOn(useGameStore.getState(), 'set');
+
+    const collide = createCollisionSystem(ctx);
+
+    // First hit: health 100 → 20, survives, NO score.
+    collide();
+    expect(enemy.isActive()).toBe(true);
+    expect(enemy.health).toBe(100 - HEAVY_DAMAGE); // 20
+    expect(ctx.enemies).toHaveLength(1);
+    expect(setSpy).not.toHaveBeenCalled();
+
+    // Second hit: push a fresh projectile, collide again.
+    setSpy.mockClear();
+    ctx.projectiles.push(new Projectile(500, 500, 0, -520, HEAVY_DAMAGE));
+
+    collide();
+    expect(enemy.isActive()).toBe(false);
+    expect(ctx.enemies).toHaveLength(0);
+    expect(setSpy).toHaveBeenCalledWith({ score: SCORE_PER_KILL });
+  });
+
+  // ── Defense % contact damage (spec "Enemy damages player" with Heavy) ─────
+
+  it('defense percentage reduces contact damage: defense 60 → actualDamage = ENEMY_CONTACT_DAMAGE * 0.4 = 8 (spec)', () => {
+    // Jet with Heavy stats: defense=60, health set to survive.
+    const jet = new Jet({ x: 300, y: 300, health: 100, stats: FALLBACK_JET_TYPES[2] });
+    const enemy = new Enemy(300, 300); // overlaps jet
+
+    // Pre-assert the math: 20 * (1 - 60/100) = 8.
+    expect(HEAVY_EXPECTED_CONTACT_DAMAGE).toBe(8);
+
+    const ctx = makeCtx(jet, [], [enemy]);
+    const setSpy = vi.spyOn(useGameStore.getState(), 'set');
+
+    createCollisionSystem(ctx)(0);
+
+    // Health decreased by exactly 8 (not 20, not 13).
+    expect(useGameStore.getState().health).toBe(100 - 8);
+    expect(setSpy).toHaveBeenCalledWith({ health: 92 });
   });
 
   it('health reaching zero transitions phase to gameOver (spec: Player death)', () => {
