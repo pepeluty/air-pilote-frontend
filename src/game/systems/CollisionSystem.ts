@@ -27,17 +27,13 @@ function circleOverlap(a: Positioned, ra: number, b: Positioned, rb: number): bo
 /**
  * CollisionSystem — overlap detection + slow-state bridge to the Zustand store.
  *
- * Design Data Flow a (terminal step):
- *   `CollisionSystem -> overlap? enemy destroyed (+score) | player damaged
- *    (-health) -> on change event -> Zustand set(score|health|phase)`.
- *
- * Two overlap checks per tick:
- *   (a) Projectile <-> Enemy: on overlap, the projectile is consumed and the
- *       enemy takes damage; if the enemy dies it is removed and the SCORE
- *       INCREMENTS (spec: "enemy is removed and the player score increments").
- *   (b) Enemy <-> Jet: on overlap, the enemy is removed and the jet takes
- *       `ENEMY_CONTACT_DAMAGE` damage (spec: "player health decreases by a
- *       defined amount and the enemy is removed").
+ * Design Data Flow c (combat multi-hit + defense):
+ *   projectile ∩ enemy ─> enemy.takeDamage(projectile.damage)
+ *                          ├─ health<=0 → enemy removed + score += SCORE_PER_KILL
+ *                          └─ health>0  → enemy survives (multi-hit), projectile consumed, NO score
+ *   enemy ∩ jet ─> actualDamage = ENEMY_CONTACT_DAMAGE * (1 - jet.defense/100)
+ *                 ─> jet.takeDamage(actualDamage) ─> enemy removed
+ *                 ─> health<=0 → phase = 'gameOver'
  *
  * Zustand State Bridge (CRITICAL — Design Decision #9):
  *   The store is written ONLY on a genuine change event — score increments on
@@ -51,7 +47,7 @@ export function createCollisionSystem(ctx: GameContext): System {
   return (): void => {
     const { jet, projectiles, enemies } = ctx;
 
-    // (a) Projectiles vs enemies.
+    // (a) Projectiles vs enemies — multi-hit (design Decision #5).
     for (let i = 0; i < projectiles.length; i++) {
       const projectile = projectiles[i];
       if (!projectile.isActive()) continue;
@@ -59,9 +55,11 @@ export function createCollisionSystem(ctx: GameContext): System {
         const enemy = enemies[j];
         if (!enemy.isActive()) continue;
         if (circleOverlap(projectile, PROJECTILE_RADIUS, enemy, ENEMY_RADIUS)) {
-          projectile.deactivate(); // consumed
-          enemy.takeDamage(1);
+          projectile.deactivate(); // consumed (even on a non-killing hit)
+          enemy.takeDamage(projectile.damage); // jet.damage per hit
           if (!enemy.isActive()) {
+            // Destroyed: score increments ONLY on the killing hit (spec
+            // "Enemy survives first hit" → no score while health > 0).
             const nextScore = useGameStore.getState().score + SCORE_PER_KILL;
             useGameStore.getState().set({ score: nextScore });
           }
@@ -70,13 +68,14 @@ export function createCollisionSystem(ctx: GameContext): System {
       }
     }
 
-    // (b) Enemies vs jet.
+    // (b) Enemies vs jet — contact damage reduced by jet.defense % (Decision #6).
     for (let k = 0; k < enemies.length; k++) {
       const enemy = enemies[k];
       if (!enemy.isActive()) continue;
       if (circleOverlap(jet, JET_RADIUS, enemy, ENEMY_RADIUS)) {
         enemy.takeDamage(enemy.health); // remove the enemy (deals contact damage)
-        const nextHealth = jet.takeDamage(ENEMY_CONTACT_DAMAGE);
+        const actualDamage = ENEMY_CONTACT_DAMAGE * (1 - jet.defense / 100);
+        const nextHealth = jet.takeDamage(actualDamage);
         // Publish health ONLY when it actually changes (once per damage event).
         if (nextHealth !== useGameStore.getState().health) {
           useGameStore.getState().set({ health: nextHealth });

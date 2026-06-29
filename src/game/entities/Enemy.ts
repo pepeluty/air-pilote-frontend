@@ -62,8 +62,13 @@ export class Enemy {
     return this.active;
   }
 
-  /** Apply damage; mark inactive when health drops to zero (cull reclaims it). */
-  takeDamage(amount: number = 1): void {
+  /**
+   * Apply `amount` damage (projectile damage = jet.damage per design Decision
+   * #5 / Data Flow c); mark inactive when health drops to zero (cull reclaims
+   * it). `amount` is required — callers pass the projectile's damage (or the
+   * enemy's full health to remove it on jet contact).
+   */
+  takeDamage(amount: number): void {
     this.health -= amount;
     if (this.health <= 0) {
       this.active = false;

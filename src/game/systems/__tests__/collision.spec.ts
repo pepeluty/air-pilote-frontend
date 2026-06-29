@@ -15,6 +15,18 @@ import { Enemy } from '../../entities/Enemy';
 import { WorldContainer } from '../../engine/WorldContainer';
 import { useGameStore } from '../../state/gameStore';
 import { SCORE_PER_KILL, ENEMY_CONTACT_DAMAGE } from '../../constants';
+
+/**
+ * Default jet (`new Jet({...})` with no stats) uses the Balanced fallback
+ * (constants.ts FALLBACK_JET_TYPES[1]): defense=35, damage=45. Contact damage is
+ * reduced by defense % per design Decision #6:
+ *   actualDamage = ENEMY_CONTACT_DAMAGE * (1 - jet.defense / 100)
+ *                = 20 * (1 - 35/100) = 13.
+ * Projectile damage (45) destroys a 100-health enemy in one hit.
+ */
+const BALANCED_DEFENSE = 35;
+const BALANCED_DAMAGE = 45;
+const EXPECTED_CONTACT_DAMAGE = ENEMY_CONTACT_DAMAGE * (1 - BALANCED_DEFENSE / 100);
 import type { GameContext } from '../../GameContext';
 import type { InputState } from '../../input/KeyboardInput';
 
@@ -50,8 +62,12 @@ describe('CollisionSystem — Basic Enemy AI + Player death specs', () => {
 
   it('enemy destroyed by projectile: enemy removed and score increments (spec)', () => {
     const jet = new Jet({ x: 100, y: 100 }); // far from the contact point
-    const enemy = new Enemy(500, 500);
-    const projectile = new Projectile(500, 500, 0, -520);
+    // Enemy health set to one shot's damage (45) so a single projectile kills
+    // it — exercises the destroy→score→cull pipeline in one tick.
+    const enemy = new Enemy(500, 500, BALANCED_DAMAGE);
+    // Projectile carries jet.damage (Balanced=45) — one hit kills (spec
+    // "Enemy destroyed by projectile").
+    const projectile = new Projectile(500, 500, 0, -520, BALANCED_DAMAGE);
     const ctx = makeCtx(jet, [projectile], [enemy]);
     const setSpy = vi.spyOn(useGameStore.getState(), 'set');
 
@@ -67,6 +83,28 @@ describe('CollisionSystem — Basic Enemy AI + Player death specs', () => {
     expect(useGameStore.getState().score).toBe(SCORE_PER_KILL);
   });
 
+  it('enemy survives first hit: multi-hit, no score until destroyed (spec)', () => {
+    const jet = new Jet({ x: 100, y: 100 });
+    // Full 100-health enemy — Balanced damage 45 needs 3 hits (⌈100/45⌉=3,
+    // design Decision #5). First hit must NOT destroy it and must NOT score.
+    const enemy = new Enemy(500, 500);
+    const projectile = new Projectile(500, 500, 0, -520, BALANCED_DAMAGE);
+    const ctx = makeCtx(jet, [projectile], [enemy]);
+    const setSpy = vi.spyOn(useGameStore.getState(), 'set');
+
+    createCollisionSystem(ctx)(0);
+
+    // Enemy survives: still active, health reduced by jet.damage (100-45=55).
+    expect(enemy.isActive()).toBe(true);
+    expect(enemy.health).toBe(100 - BALANCED_DAMAGE);
+    expect(ctx.enemies).toHaveLength(1); // not culled
+    // Projectile is consumed regardless (deactivated on any hit) + culled.
+    expect(ctx.projectiles).toHaveLength(0);
+    // NO slow-state change events on a surviving hit — no score, health, phase.
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(useGameStore.getState().score).toBe(0);
+  });
+
   it('enemy damages the player: health decreases and the enemy is removed (spec)', () => {
     const jet = new Jet({ x: 300, y: 300, health: 100 });
     const enemy = new Enemy(300, 300); // overlaps the jet
@@ -77,16 +115,17 @@ describe('CollisionSystem — Basic Enemy AI + Player death specs', () => {
 
     expect(ctx.enemies).toHaveLength(0);
     expect(enemy.isActive()).toBe(false);
-    // health published exactly once with the reduced value.
-    expect(setSpy).toHaveBeenCalledWith({ health: 100 - ENEMY_CONTACT_DAMAGE });
-    expect(useGameStore.getState().health).toBe(100 - ENEMY_CONTACT_DAMAGE);
+    // Contact damage reduced by jet.defense % (Decision #6): 20*(1-35/100)=13.
+    expect(setSpy).toHaveBeenCalledWith({ health: 100 - EXPECTED_CONTACT_DAMAGE });
+    expect(useGameStore.getState().health).toBe(100 - EXPECTED_CONTACT_DAMAGE);
     // Phase does NOT change (player still alive) — no gameOver publish.
     expect(setSpy).not.toHaveBeenCalledWith(expect.objectContaining({ phase: 'gameOver' }));
     expect(useGameStore.getState().phase).toBe('playing');
   });
 
   it('health reaching zero transitions phase to gameOver (spec: Player death)', () => {
-    const jet = new Jet({ x: 300, y: 300, health: ENEMY_CONTACT_DAMAGE });
+    // Health set to exactly one contact-hit's worth of damage (defense % applies).
+    const jet = new Jet({ x: 300, y: 300, health: EXPECTED_CONTACT_DAMAGE });
     const enemy = new Enemy(300, 300);
     const ctx = makeCtx(jet, [], [enemy]);
     const setSpy = vi.spyOn(useGameStore.getState(), 'set');

@@ -38,11 +38,15 @@ export function createShootingSystem(ctx: GameContext): System {
       const jet = ctx.jet;
       const nose = jet.nose();
       const dir = jet.facingVector();
+      // Carries the selected jet type's `damage` stat (spec MODIFIED "Shooting":
+      // "the projectile MUST deal `jet.damage` on hit") — applied by
+      // CollisionSystem via `enemy.takeDamage(projectile.damage)` (PR 5).
       const projectile = new Projectile(
         nose.x,
         nose.y,
         dir.dx * PROJECTILE_SPEED,
         dir.dy * PROJECTILE_SPEED,
+        jet.damage,
       );
       ctx.projectiles.push(projectile);
       ctx.worldContainer.container.addChild(projectile.view);

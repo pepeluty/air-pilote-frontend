@@ -51,8 +51,10 @@ describe('Zustand State Bridge — Slow state publish (spec)', () => {
 
   it('publishes score EXACTLY ONCE per change event (not per frame)', () => {
     const jet = new Jet({ x: 100, y: 100 });
-    const enemy = new Enemy(500, 500);
-    const projectile = new Projectile(500, 500, 0, -520);
+    // Enemy health set to one shot's damage so a single projectile kills it
+    // — exercises the one-kill → one-score-publish bridge in one tick.
+    const enemy = new Enemy(500, 500, 45);
+    const projectile = new Projectile(500, 500, 0, -520, 45);
     const ctx: GameContext = {
       jet,
       worldContainer: new WorldContainer(),

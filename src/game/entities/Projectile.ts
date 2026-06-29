@@ -19,16 +19,24 @@ export class Projectile {
   y: number;
   vx: number;
   vy: number;
+  /**
+   * Damage dealt on hit — the selected jet type's `damage` stat, supplied at
+   * spawn by ShootingSystem (design Data Flow c / spec MODIFIED "Shooting":
+   * "the projectile MUST deal `jet.damage` on hit"). Applied by
+   * CollisionSystem via `enemy.takeDamage(projectile.damage)`.
+   */
+  readonly damage: number;
   private active: boolean;
   private destroyed = false;
 
   private readonly gfx: Graphics;
 
-  constructor(x: number, y: number, vx: number, vy: number) {
+  constructor(x: number, y: number, vx: number, vy: number, damage: number) {
     this.x = x;
     this.y = y;
     this.vx = vx;
     this.vy = vy;
+    this.damage = damage;
     this.active = true;
 
     this.gfx = new Graphics();
