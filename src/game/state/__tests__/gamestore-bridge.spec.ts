@@ -30,6 +30,7 @@ function fakeInput(right = false): InputState & { flags: { right: boolean } } {
     isLeft: () => false,
     isRight: () => flags.right,
     isShoot: () => false,
+    isAccelerate: () => false,
   } as InputState & { flags: { right: boolean } };
 }
 

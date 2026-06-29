@@ -24,6 +24,7 @@ function makeInput(shoot = false): InputState & { flags: { shoot: boolean } } {
     isLeft: () => false,
     isRight: () => false,
     isShoot: () => flags.shoot,
+    isAccelerate: () => false,
   } as InputState & { flags: { shoot: boolean } };
 }
 

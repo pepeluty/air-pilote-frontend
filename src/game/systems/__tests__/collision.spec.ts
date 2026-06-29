@@ -24,6 +24,7 @@ const NO_INPUT: InputState = {
   isLeft: () => false,
   isRight: () => false,
   isShoot: () => false,
+  isAccelerate: () => false,
 };
 
 function makeCtx(jet: Jet, projectiles: Projectile[], enemies: Enemy[]): GameContext {

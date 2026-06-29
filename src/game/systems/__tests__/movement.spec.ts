@@ -33,6 +33,7 @@ function makeInput(over: Partial<Record<keyof InputState, boolean>> = {}): Input
     isLeft: () => flags.left,
     isRight: () => flags.right,
     isShoot: () => flags.shoot,
+    isAccelerate: () => false,
   } as InputState & { flags: typeof flags };
 }
 

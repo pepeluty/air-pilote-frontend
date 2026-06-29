@@ -1,4 +1,4 @@
-import { JET_MAX_HEALTH } from '../constants';
+import { FALLBACK_JET_TYPES, JET_MAX_HEALTH } from '../constants';
 import { Jet } from '../entities/Jet';
 import type { Projectile } from '../entities/Projectile';
 import type { Enemy } from '../entities/Enemy';
@@ -11,6 +11,7 @@ import { createShootingSystem } from '../systems/ShootingSystem';
 import { createSpawnSystem } from '../systems/SpawnSystem';
 import { createEnemyAISystem } from '../systems/EnemyAISystem';
 import { createCollisionSystem } from '../systems/CollisionSystem';
+import { useGameStore } from '../state/gameStore';
 
 /**
  * Minimal registrar a host (the Engine) must satisfy: register/unregister a
@@ -65,11 +66,24 @@ export class GameSystems {
     this.input = new KeyboardInput();
     this.input.attach();
 
-    // Spawn the jet at the world centre, full health.
+    // Spawn the jet at the world centre, full health. Per-type stats come from
+    // the player's MenuScreen selection (design Data Flow a): read the cached
+    // `jetStats` from the store; when no selection yet (e.g. before PR 6 wires
+    // the MenuScreen + Start precondition), fall back to the Balanced jet type
+    // (FALLBACK_JET_TYPES[1] — the FK default) so the game stays playable.
+    const { jetStats } = useGameStore.getState();
+    const selectedStats = jetStats ?? FALLBACK_JET_TYPES[1];
     this.jet = new Jet({
       x: mapBounds.width / 2,
       y: mapBounds.height / 2,
       health: JET_MAX_HEALTH,
+      stats: {
+        maxSpeed: selectedStats.maxSpeed,
+        cruiseSpeed: selectedStats.cruiseSpeed,
+        accelerationRate: selectedStats.accelerationRate,
+        defense: selectedStats.defense,
+        damage: selectedStats.damage,
+      },
     });
     worldContainer.container.addChild(this.jet.view);
 

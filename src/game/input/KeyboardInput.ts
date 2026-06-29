@@ -2,10 +2,10 @@
  * Keyboard input for the game. Tracks currently-held keys via `keydown`/
  * `keyup` listeners on `window` and exposes a directional + shoot query API.
  *
- * Movement: WASD OR arrow keys. Shoot: Space.
+ * Movement: WASD OR arrow keys. Shoot: Space. Accelerate: Shift.
  * `attach()`/`detach()` manage listeners (detached on teardown to avoid
- * leaks). `preventDefault` is called on game keys so arrow/space don't scroll
- * the page.
+ * leaks). `preventDefault` is called on game keys so arrow/space/shift don't
+ * scroll the page.
  *
  * This is the "InputSystem" of the design Data Flow (Input -> InputSystem) —
  * read-only each tick by MovementSystem/ShootingSystem.
@@ -16,6 +16,8 @@ export interface InputState {
   isLeft(): boolean;
   isRight(): boolean;
   isShoot(): boolean;
+  /** Held while the player is urging the jet beyond cruiseSpeed toward maxSpeed (Shift). */
+  isAccelerate(): boolean;
 }
 
 const MOVE_UP = new Set(['KeyW', 'ArrowUp']);
@@ -23,12 +25,15 @@ const MOVE_DOWN = new Set(['KeyS', 'ArrowDown']);
 const MOVE_LEFT = new Set(['KeyA', 'ArrowLeft']);
 const MOVE_RIGHT = new Set(['KeyD', 'ArrowRight']);
 const SHOOT = new Set(['Space']);
+/** Either Shift key ramps `currentSpeed` toward `maxSpeed` (design Decision #3). */
+const ACCELERATE = new Set(['ShiftLeft', 'ShiftRight']);
 const GAME_KEYS = new Set<string>([
   ...MOVE_UP,
   ...MOVE_DOWN,
   ...MOVE_LEFT,
   ...MOVE_RIGHT,
   ...SHOOT,
+  ...ACCELERATE,
 ]);
 
 export class KeyboardInput implements InputState {
@@ -79,6 +84,11 @@ export class KeyboardInput implements InputState {
 
   isShoot(): boolean {
     return this.hasAny(SHOOT);
+  }
+
+  /** True while either Shift key is held (accelerate toward maxSpeed). */
+  isAccelerate(): boolean {
+    return this.hasAny(ACCELERATE);
   }
 
   private hasAny(codes: Set<string>): boolean {
