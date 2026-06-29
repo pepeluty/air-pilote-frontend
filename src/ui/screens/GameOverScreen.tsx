@@ -19,17 +19,22 @@ export function GameOverScreen(): JSX.Element {
 
   useEffect(() => {
     let active = true;
-    const { score: finalScore, playStartedAt } = useGameStore.getState();
+    const { score: finalScore, playStartedAt, selectedJetTypeId } = useGameStore.getState();
     const durationMs = playStartedAt != null ? Date.now() - playStartedAt : 0;
-    api
-      .saveGameRecord(finalScore, durationMs)
-      .then(() => {
-        if (active) setSaved(true);
-      })
-      .catch(() => {
-        // Persistence failed (session expired / network). The game still ends;
-        // the record is simply not saved this session.
-      });
+    // jetTypeId is required by the backend (design Data Flow d). Until PR 6
+    // wires the jet-selection menu, selectedJetTypeId is null and we skip the
+    // save — a record cannot be persisted without a jet type.
+    if (selectedJetTypeId) {
+      api
+        .saveGameRecord(finalScore, durationMs, selectedJetTypeId)
+        .then(() => {
+          if (active) setSaved(true);
+        })
+        .catch(() => {
+          // Persistence failed (session expired / network). The game still ends;
+          // the record is simply not saved this session.
+        });
+    }
     return () => {
       active = false;
     };

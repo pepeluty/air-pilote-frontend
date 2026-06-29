@@ -13,12 +13,13 @@
  * new token. On failure the access token is cleared and `ApiError(401,
  * 'Session expired')` is thrown so the UI can return to the auth screen.
  *
- * Endpoints (specs backend-identity / backend-game-records):
+ * Endpoints (specs backend-identity / backend-game-records / backend-jet-types):
  *   POST /auth/register            { email, password } → { accessToken }
  *   POST /auth/login               { email, password } → { accessToken }
  *   POST /auth/refresh             (cookie)            → { accessToken }
  *   POST /auth/logout              (cookie)            → 204
- *   POST /game-records             { score, durationMs } → 201 GameRecordDto
+ *   GET  /jet-types                (@Public, no auth)  → JetTypeDto[]
+ *   POST /game-records             { score, durationMs, jetTypeId } → 201 GameRecordDto
  *   GET  /game-records/high-score                      → { highScore: number | null }
  */
 
@@ -53,6 +54,23 @@ export interface GameRecordDto {
   score: number;
   durationMs: number;
   timestamp: string;
+  jetTypeId: string;
+}
+
+/**
+ * Jet type returned by GET /jet-types (@Public). Shape mirrors the backend
+ * `JetTypeEntity` / seed rows (design: authoritative seed-values table). The
+ * frontend `FALLBACK_JET_TYPES` constant in `game/constants.ts` is typed against
+ * this so a test can assert FE fallback + backend seed stay in sync.
+ */
+export interface JetTypeDto {
+  id: string;
+  name: string;
+  maxSpeed: number;
+  cruiseSpeed: number;
+  accelerationRate: number;
+  defense: number;
+  damage: number;
 }
 
 /** High-score response: `null` when the player has no records (spec). */
@@ -217,13 +235,32 @@ export async function logout(): Promise<void> {
 
 // --- Game records helpers --------------------------------------------------
 
-/** POST /game-records. Returns the persisted record (spec: 201). */
-export async function saveGameRecord(score: number, durationMs: number): Promise<GameRecordDto> {
-  return post<GameRecordDto>('/game-records', { score, durationMs });
+/**
+ * POST /game-records. Sends the selected `jetTypeId` so the backend can
+ * validate it via `JetTypeExists` (422 on unknown — design Data Flow d).
+ * Returns the persisted record (spec: 201).
+ */
+export async function saveGameRecord(
+  score: number,
+  durationMs: number,
+  jetTypeId: string,
+): Promise<GameRecordDto> {
+  return post<GameRecordDto>('/game-records', { score, durationMs, jetTypeId });
 }
 
 /** GET /game-records/high-score. Returns `null` when the player has no records. */
 export async function getHighScore(): Promise<number | null> {
   const body = await get<HighScoreDto>('/game-records/high-score');
   return body.highScore;
+}
+
+// --- Jet types helpers -----------------------------------------------------
+
+/**
+ * GET /jet-types (@Public — no auth required). Returns the catalog of jet
+ * types seeded by Migration20260626000002. On failure the caller falls back to
+ * `FALLBACK_JET_TYPES` from `game/constants.ts` (design Data Flow a).
+ */
+export async function getJetTypes(): Promise<JetTypeDto[]> {
+  return get<JetTypeDto[]>('/jet-types');
 }
